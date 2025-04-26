@@ -1,0 +1,413 @@
+---
+title: "Project Report"
+format: html
+editor: visual
+---
+
+Deasy Pasaribu
+
+**Title: Bank Customer Churn**
+
+Dataset Overview
+
+The dataset contains information about 10,000 bank customers from 3 geography areas and long span of ages. The primary goal is to predict the 'Exited' column, indicating whether a customer has churned (1) or retained (0).
+
+1.  Data Structure and Summary
+
+    ```{r}
+    # Load library
+    library(tidyverse)
+
+    customer_churn <- read.csv("Churn_Modelling.csv")
+    str(customer_churn)
+    summary(customer_churn)
+    any(is.na(customer_churn))
+
+    # Checking for missing value
+    knitr::kable(sapply(customer_churn, function(x) sum(is.na(x))), col.names = c("Missing Value"))
+    ```
+
+2.  Data pre-processing
+
+    ```{r}
+    # Load library
+    library(caret)
+
+    # Remove insignificant variables
+    customer_churn = customer_churn[, !names(customer_churn) %in% c('RowNumber', 'CustomerId', 'Surname')]
+
+    # Convert as factor
+    customer_churn$Geography = factor(customer_churn$Geography, labels=c(0, 1, 2))
+    customer_churn$Gender = factor(customer_churn$Gender, labels=c(0, 1))
+
+    # Ensure model compatibility
+    customer_churn$Age = log(customer_churn$Age)
+    customer_churn$CreditScore = log(customer_churn$CreditScore)
+    customer_churn$Balance = log(customer_churn$Balance)
+    customer_churn[customer_churn$Balance == -Inf, 'Balance'] <- 0
+
+    # Set scale "0 to 1"
+    fun_scale_0to1 <- function(x) {
+      (x - min(x)) / (max(x) - min(x))
+      }
+    #customer_churn$Age = fun_scale_0to1(customer_churn$Age) #########
+    customer_churn$CreditScore = fun_scale_0to1(customer_churn$CreditScore)
+    customer_churn$Balance = fun_scale_0to1(customer_churn$Balance)
+    customer_churn$EstimatedSalary = fun_scale_0to1(customer_churn$EstimatedSalary)
+    head(customer_churn, 25)
+    ```
+
+3.  Logistic Regression
+
+    ```{r}
+    # Load libraries
+    library(caret)
+    library(MLmetrics)
+    library(dplyr)
+
+    # Load data
+    customer_churn <- read.csv("Churn_Modelling.csv")
+
+    # Remove identifier columns
+    customer_churn <- customer_churn %>% select(-RowNumber, -CustomerId, -Surname)
+
+    # Convert target to factor
+    customer_churn$Exited <- as.factor(customer_churn$Exited)
+
+    # Convert categorical variables to factor
+    customer_churn$Gender <- as.factor(customer_churn$Gender)
+    customer_churn$Geography <- as.factor(customer_churn$Geography)
+    customer_churn$HasCrCard <- as.factor(customer_churn$HasCrCard)
+    customer_churn$IsActiveMember <- as.factor(customer_churn$IsActiveMember)
+
+    # Fit the regression model (full)
+    churn_mod = glm(Exited ~ ., customer_churn, family = "binomial")
+    summary(churn_mod)
+
+    # Show odds ratios
+    exp(coef(churn_mod))
+    ```
+
+    ```{r}
+    # Model of Selected Variables
+    # Model 1
+    churn_mod1 <- glm(Exited ~ Age + IsActiveMember, customer_churn, family = "binomial")
+    summary(churn_mod1)
+
+    # Model 2
+    churn_mod2 <- glm(Exited ~ Age + IsActiveMember + Balance, customer_churn, family = "binomial")
+    summary(churn_mod2)
+
+    # Model 3
+    churn_mod3 <- glm(Exited ~ Age + IsActiveMember + Balance + Geography + Gender, customer_churn, family = "binomial")
+    summary(churn_mod3)
+
+    # Model 4
+    churn_mod4 <- glm(Exited ~ Age + IsActiveMember + Balance + Geography + Gender + NumOfProducts, customer_churn, family = "binomial")
+    summary(churn_mod4)
+
+    # Model 5
+    churn_mod5 <- glm(Exited ~ Age + IsActiveMember + Balance + Geography + Gender + NumOfProducts + CreditScore, customer_churn, family = "binomial")
+    summary(churn_mod5)
+    ```
+
+    ```{r}
+    # Evaluate baseline model (logistic regression) performance using F1-Score
+    evaluate_model <- function(model, customer_churn) {
+      prob <- predict(model, type = "response")
+      pred <- ifelse(prob > 0.5, 1, 0)
+      actual <- as.numeric(as.character(customer_churn$Exited))
+      acc <- Accuracy(pred, actual)
+      f1 <- F1_Score(pred, actual, positive = "1")
+      return(list(accuracy = acc, f1_score = f1))}
+
+    eval_churn_mod <- evaluate_model(churn_mod, customer_churn)
+    print(eval_churn_mod)
+    eval_mod1 <- evaluate_model(churn_mod1, customer_churn)
+    print(eval_mod1)
+    eval_mod2 <- evaluate_model(churn_mod2, customer_churn)
+    print(eval_mod2)
+    eval_mod3 <- evaluate_model(churn_mod3, customer_churn)
+    print(eval_mod3)
+    eval_mod4 <- evaluate_model(churn_mod4, customer_churn)
+    print(eval_mod4)
+    eval_mod5 <- evaluate_model(churn_mod5, customer_churn)
+    print(eval_mod5)
+    ```
+
+4.  Multicollinearity
+
+    ```{r}
+    # Checking multicollinearity
+    library(car)
+
+    vif(churn_mod)
+    vif(churn_mod1)
+    vif(churn_mod2)
+    vif(churn_mod3)
+    vif(churn_mod4)
+    vif(churn_mod5)
+    ```
+
+5.  Confidence Interval, Odds Ratio, and Wald Test
+
+    ```{r}
+    ## CI and Odds Ratio + CI ##
+    # Full model
+    confint(churn_mod)
+    exp(cbind(OR = coef(churn_mod), confint(churn_mod)))
+
+    # Model 1
+    confint(churn_mod1)
+    exp(cbind(OR = coef(churn_mod1), confint(churn_mod1)))
+
+    # Model 2
+    confint(churn_mod2)
+    exp(cbind(OR = coef(churn_mod2), confint(churn_mod2)))
+
+    # Model 3
+    confint(churn_mod3)
+    exp(cbind(OR = coef(churn_mod3), confint(churn_mod3)))
+
+    # Model 4
+    confint(churn_mod4)
+    exp(cbind(OR = coef(churn_mod4), confint(churn_mod4)))
+
+    # Model 5
+    confint(churn_mod5)
+    exp(cbind(OR = coef(churn_mod5), confint(churn_mod5)))
+    ```
+
+6.  Goodness of Fit
+
+    ```{r}
+    # Perform AIC
+    AIC(churn_mod)
+    AIC(churn_mod1)
+    AIC(churn_mod2)
+    AIC(churn_mod3)
+    AIC(churn_mod4)
+    AIC(churn_mod5)
+    ```
+
+7.  Likelihood Ratio Test
+
+    ```{r}
+    # Likelihood Ratio Test
+
+    cat("#Likelihood Ratio for Model 1# \n")
+    anova(churn_mod1, test="Chisq")
+    cat("#Likelihood Ratio for Model 2# \n")
+    anova(churn_mod2, test="Chisq")
+    cat("#Likelihood Ratio for Model 3# \n")
+    anova(churn_mod3, test="Chisq")
+    cat("#Likelihood Ratio for Model 4# \n")
+    anova(churn_mod4, test="Chisq")
+    cat("#Likelihood Ratio for Model 5# \n")
+    anova(churn_mod5, test="Chisq")
+    cat("#Likelihood Ratio for Full model# \n")
+    anova(churn_mod, test="Chisq")
+    ```
+
+8.  Hosmer-Lemeshow Test
+
+    ```{r}
+    # Load library
+    library(ResourceSelection)
+
+    # Convert factor to numeric
+    customer_churn$Exited <- as.numeric(as.character(customer_churn$Exited))
+
+    # Hosmer-Lemeshow Test
+    cat("#Hosmer-Lemeshow for Model 1# \n")
+    hoslem.test(customer_churn$Exited, fitted(churn_mod1))
+
+    cat("#Hosmer-Lemeshow for Model 2# \n")
+    hoslem.test(customer_churn$Exited, fitted(churn_mod2))
+
+    cat("#Hosmer-Lemeshow for Model 3# \n")
+    hoslem.test(customer_churn$Exited, fitted(churn_mod3))
+
+    cat("#Hosmer-Lemeshow for Model 4# \n")
+    hoslem.test(customer_churn$Exited, fitted(churn_mod4))
+
+    cat("#Hosmer-Lemeshow for Model 5# \n")
+    hoslem.test(customer_churn$Exited, fitted(churn_mod5))
+
+    cat("#Hosmer-Lemeshow for Full Model \n")
+    hoslem.test(customer_churn$Exited, fitted(churn_mod))
+    ```
+
+9.  Model Evaluation using Confusion Matrix
+
+    ```{r}
+    #Load library
+    library(caret)
+
+    ## Confusion Matrix ##
+    # Full model
+    prob_mod <- predict(churn_mod, type = "response")
+    pred_mod <- ifelse(prob_mod > 0.5, 1, 0)
+    conf_matrix_mod <- confusionMatrix(factor(pred_mod), factor(customer_churn$Exited), positive = "1")
+    cat("Full Model:\n")
+    print(conf_matrix_mod)
+
+    # Model 1
+    prob_mod1 <- predict(churn_mod1, type = "response")
+    pred_mod1 <- ifelse(prob_mod1 > 0.5, 1, 0)
+    conf_matrix_mod1 <- confusionMatrix(factor(pred_mod1), factor(customer_churn$Exited), positive = "1")
+    cat("Model 1:\n")
+    print(conf_matrix_mod1)
+
+    # Model 2
+    prob_mod2 <- predict(churn_mod2, type = "response")
+    pred_mod2 <- ifelse(prob_mod2 > 0.5, 1, 0)
+    conf_matrix_mod2 <- confusionMatrix(factor(pred_mod2), factor(customer_churn$Exited), positive = "1")
+    cat("Model 2:\n")
+    print(conf_matrix_mod2)
+
+    # Model 3
+    prob_mod3 <- predict(churn_mod3, type = "response")
+    pred_mod3 <- ifelse(prob_mod3 > 0.5, 1, 0)
+    conf_matrix_mod3 <- confusionMatrix(factor(pred_mod3), factor(customer_churn$Exited), positive = "1")
+    cat("Model 3:\n")
+    print(conf_matrix_mod3)
+
+    # Model 4
+    prob_mod4 <- predict(churn_mod4, type = "response")
+    pred_mod4 <- ifelse(prob_mod4 > 0.5, 1, 0)
+    conf_matrix_mod4 <- confusionMatrix(factor(pred_mod4), factor(customer_churn$Exited), positive = "1")
+    cat("Model 4:\n")
+    print(conf_matrix_mod4)
+
+    # Model 5
+    prob_mod5 <- predict(churn_mod5, type = "response")
+    pred_mod5 <- ifelse(prob_mod5 > 0.5, 1, 0)
+    conf_matrix_mod5 <- confusionMatrix(factor(pred_mod5), factor(customer_churn$Exited), positive = "1")
+    cat("Model 5:\n")
+    print(conf_matrix_mod5)
+    ```
+
+10. ROC-AUC
+
+    ```{r}
+    library(pROC)
+
+    # Probability predicition
+    churn_all_models <- list(
+      Model1 = prob_mod1,
+      Model2 = prob_mod2,
+      Model3 = prob_mod3,
+      Model4 = prob_mod4,
+      Model5 = prob_mod5,
+      FullModel = prob_mod)
+
+    colors <- c("red", "green", "blue", "yellow", "orange", "black")
+
+    # ROC
+    rocs <- Map(function(pred) roc(customer_churn$Exited, pred), churn_all_models)
+
+    # Plot ROC
+    plot(rocs[[1]], col = colors[1], lwd = 2, main = "ROC Curves – All Models")
+    invisible(mapply(function(r, col) lines(r, col = col, lwd = 2), rocs[-1], colors[-1]))
+    legend("bottomright", legend = names(churn_all_models), col = colors, lwd = 2)
+
+    ```
+
+11. Cross Validation
+
+    ```{r}
+    # Load library
+    library(caret)
+
+    # Set up cross-validation
+    cv_ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+    # Convert target to factor for caret
+    customer_churn$Exited <- factor(customer_churn$Exited, levels = c(0, 1), labels = c("No", "Yes"))
+
+    # Train logistic regression with CV
+    set.seed(123)
+    logit_cv <- train(Exited ~ ., data = customer_churn,
+                      method = "glm",
+                      family = "binomial",
+                      trControl = cv_ctrl,
+                      metric = "ROC")  # optimize for AUC
+
+    logit_cv
+    ```
+
+12. EDA: Target Variable Distribution
+
+    ```{r}
+    library(ggplot2)
+    customer_churn %>%
+      count(Exited) %>%
+      mutate(percentage = n / sum(n) * 100)
+
+    ggplot(customer_churn, aes(x = factor(Exited))) +
+      geom_bar(fill = c("green", "red")) +
+      labs(title = "Customer Churn Distribution", x = "Exited", y = "Count")
+    ```
+
+13. EDA: Demographic Summary
+
+    ```{r}
+    customer_churn %>% count(Gender)
+    customer_churn %>%
+      group_by(Gender) %>%
+      summarise(min_age = min(Age),
+                max_age = max(Age),
+                mean_age = mean(Age),
+                median_age = median(Age))
+    customer_churn %>% count(Geography)
+    ```
+
+14. EDA: Categorical Variables & Churn Trends
+
+    ```{r}
+    library(tidyverse)
+    library(ggplot2)
+    # Churn rate by Geography
+    churn_by_geography <- customer_churn %>%
+      group_by(Geography) %>%
+      summarise(churn_rate = mean(Exited) * 100)
+    churn_by_geography
+
+    # Churn rate by Gender
+    churn_by_gender <- customer_churn %>%
+      group_by(Gender) %>%
+      summarise(churn_rate = mean(Exited) * 100)
+    churn_by_gender
+
+    # Plot (by Geography)
+    ggplot(churn_by_geography, aes(x = Geography, y = churn_rate, fill = Geography)) +
+      geom_col() +
+      labs(title = "Churn Rate by Geography", y = "Churn Rate (%)") +
+      theme_minimal()
+
+    # Plot (by Gender)
+    ggplot(churn_by_gender, aes(x = Gender, y = churn_rate, fill = Gender)) +
+      geom_col() +
+      labs(title = "Churn Rate by Gender", y = "Churn Rate (%)") +
+      theme_minimal()
+    ```
+
+15. EDA: Numerical Variables & Churn Trends
+
+    ```{r}
+    # Churn rate summary
+    numerical_summary <- customer_churn %>%
+      group_by(Exited) %>%
+      summarise(
+        Age_mean = mean(Age),
+        Age_median = median(Age),
+        Age_min = min(Age),
+        Age_max = max(Age),
+        Balance_mean = mean(Balance),
+        Balance_median = median(Balance),
+        CreditScore_mean = mean(CreditScore),
+        Tenure_mean = mean(Tenure),
+        EstimatedSalary_mean = mean(EstimatedSalary))
+    numerical_summary
+    ```
